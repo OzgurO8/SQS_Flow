@@ -11,6 +11,7 @@ AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
 AWS_REGION = os.getenv('AWS_REGION')
 QUEUE_UR_TODO = os.getenv('QUEUE_UR_TODO')
 QUEUE_UR_COMPLETED = os.getenv('QUEUE_UR_COMPLETED')
+QUEUE_UR_FAILED = os.getenv('QUEUE_UR_FAILED')
 
 # Create SQS client with credentials from environment variables
 sqs = boto3.client(
@@ -71,12 +72,28 @@ def receive_messages():
     for message in messages:
         receipt_handle = message['ReceiptHandle']
         print(f"Processing message: {receipt_handle}")
-        first_item = parse_first_item_from_json(message['Body'])
-        print("First item:", first_item)
-        # Move the processed message to the completed queue
-        print(f"Moving message {receipt_handle} to completed queue...")
-        move_message_to_another_queue(sqs, QUEUE_UR_TODO, QUEUE_UR_COMPLETED, message)
-        print(f"Message {receipt_handle} successfully processed, deleted from TODO queue and moved to COMPLETED queue")
+        
+        try:
+            first_item = parse_first_item_from_json(message['Body'])
+            print("First item:", first_item)
+            
+            # Check if the dummy function failed (returned None)
+            if first_item is None:
+                print(f"Dummy function failed for message {receipt_handle}, moving to failed queue...")
+                move_message_to_another_queue(sqs, QUEUE_UR_TODO, QUEUE_UR_FAILED, message)
+                print(f"Message {receipt_handle} moved to FAILED queue due to processing failure")
+            else:
+                # Move the successfully processed message to the completed queue
+                print(f"Moving message {receipt_handle} to completed queue...")
+                move_message_to_another_queue(sqs, QUEUE_UR_TODO, QUEUE_UR_COMPLETED, message)
+                print(f"Message {receipt_handle} successfully processed, deleted from TODO queue and moved to COMPLETED queue")
+                
+        except Exception as e:
+            # Handle any unexpected errors during processing
+            print(f"Unexpected error processing message {receipt_handle}: {str(e)}")
+            print(f"Moving message {receipt_handle} to failed queue...")
+            move_message_to_another_queue(sqs, QUEUE_UR_TODO, QUEUE_UR_FAILED, message)
+            print(f"Message {receipt_handle} moved to FAILED queue due to unexpected error")
 
 if __name__ == "__main__":
     receive_messages()
